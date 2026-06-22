@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>图片生成器 - 支持 sRGB / Display P3</title>
+<style>
+* { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+body { background: #f0f4f8; display: flex; justify-content: center; padding: 20px; }
+.container { max-width: 1100px; width: 100%; background: white; border-radius: 20px; padding: 24px 28px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+h1 { margin-top: 0; color: #1a2332; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 20px; }
+h1 small { font-size: 13px; font-weight: 400; color: #5a6a82; }
+.tab-bar { display: flex; gap: 4px; margin: 12px 0 0; border-bottom: 2px solid #e9edf3; }
+.tab { padding: 8px 20px; border-radius: 8px 8px 0 0; background: transparent; cursor: pointer; font-weight: 600; font-size: 13px; border: none; color: #5a6a82; transition: 0.2s; }
+.tab:hover { background: #f0f4f8; }
+.tab.active { background: #1f6feb; color: white; }
+.tab-panel { display: none; padding: 14px 0 8px; }
+.tab-panel.active { display: block; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; margin: 4px 0 10px; align-items: end; }
+.row > div { flex: 1; min-width: 100px; }
+.row label { font-weight: 600; font-size: 12px; color: #2c3e50; display: block; margin-bottom: 2px; }
+input, select { width: 100%; padding: 5px 10px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 13px; background: white; }
+input[type="number"] { width: 100%; }
+input[type="color"] { width: 42px; height: 34px; padding: 2px; cursor: pointer; border-radius: 6px; border: 1px solid #d0d7de; }
+.color-group { display: flex; gap: 6px; align-items: center; }
+.color-group input[type="text"] { flex: 1; font-size: 12px; padding: 5px 8px; }
+.btn { background: #1f6feb; color: white; border: none; padding: 7px 18px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; transition: 0.2s; }
+.btn:hover { background: #1557b0; }
+.btn-secondary { background: #e1e8f0; color: #1a2332; }
+.btn-secondary:hover { background: #cdd6e0; }
+.btn-group { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0 12px; }
+.btn-group .btn { font-size: 12px; padding: 6px 16px; }
+.preview-area { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-top: 12px; }
+.preview-card { background: #f8faff; border-radius: 10px; padding: 10px; border: 1px solid #e9edf3; text-align: center; }
+.preview-card img { width: 100%; height: auto; border-radius: 6px; border: 1px solid #dce3ec; display: block; background: #eee; }
+.preview-card .info { font-size: 10px; color: #4a5a72; margin: 4px 0 6px; word-break: break-all; line-height: 1.4; }
+.preview-card .download-btn { background: #2d9cdb; color: white; border: none; padding: 3px 12px; border-radius: 5px; font-size: 11px; cursor: pointer; }
+.preview-card .download-btn:hover { background: #1f7ab0; }
+.status { margin-top: 10px; padding: 8px 14px; background: #eaf3ff; border-radius: 8px; color: #1a4c7a; font-size: 13px; }
+.status .count { font-weight: 700; color: #1f6feb; }
+.hidden { display: none; }
+.panel-desc { color: #4a5a72; margin: 0 0 6px; font-size: 13px; }
+.color-space-badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; margin-left: 6px; }
+.color-space-badge.srgb { background: #d4edda; color: #155724; }
+.color-space-badge.p3 { background: #cce5ff; color: #004085; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🖼️ 图片生成器 <small>纯色 · 渐变 · 灰阶批量</small>
+    <span id="colorSpaceBadge" class="color-space-badge srgb">sRGB</span>
+  </h1>
+
+  <div class="tab-bar">
+    <button class="tab active" data-tab="solid">🎨 纯色</button>
+    <button class="tab" data-tab="gradient">🌈 渐变</button>
+    <button class="tab" data-tab="gray">⬛ 灰阶批量</button>
+  </div>
+
+  <!-- 面板1: 纯色 -->
+  <div id="panel-solid" class="tab-panel active">
+    <p class="panel-desc">生成指定RGB值和分辨率的纯色图片，右下角自动标注信息。</p>
+    <div class="row">
+      <div><label>📐 宽度</label><input type="number" id="s_width" value="800" min="1" max="8192"></div>
+      <div><label>📐 高度</label><input type="number" id="s_height" value="600" min="1" max="8192"></div>
+      <div>
+        <label>🎨 RGB</label>
+        <div class="color-group">
+          <input type="color" id="s_colorPicker" value="#ff6b6b">
+          <input type="text" id="s_rgbText" value="rgb(255,107,107)" placeholder="rgb(255,107,107)">
+        </div>
+      </div>
+      <div><label>🖼️ 格式</label>
+        <select id="s_format"><option value="png">PNG</option><option value="jpeg">JPEG</option></select>
+      </div>
+      <div><label>🎯 色彩空间</label>
+        <select id="s_colorspace"><option value="srgb">sRGB</option><option value="p3">Display P3</option></select>
+      </div>
+    </div>
+    <button class="btn" id="s_generateBtn">⚡ 生成</button>
+  </div>
+
+  <!-- 面板2: 渐变 -->
+  <div id="panel-gradient" class="tab-panel">
+    <p class="panel-desc">生成从起始RGB渐变到结束RGB的图片，右下角自动标注信息。</p>
+    <div class="row">
+      <div><label>📐 宽度</label><input type="number" id="g_width" value="800" min="1" max="8192"></div>
+      <div><label>📐 高度</label><input type="number" id="g_height" value="600" min="1" max="8192"></div>
+      <div>
+        <label>🔴 起始</label>
+        <div class="color-group">
+          <input type="color" id="g_startPicker" value="#ff6b6b">
+          <input type="text" id="g_startText" value="rgb(255,107,107)" placeholder="rgb(255,107,107)">
+        </div>
+      </div>
+      <div>
+        <label>🔵 结束</label>
+        <div class="color-group">
+          <input type="color" id="g_endPicker" value="#4ecdc4">
+          <input type="text" id="g_endText" value="rgb(78,205,196)" placeholder="rgb(78,205,196)">
+        </div>
+      </div>
+      <div><label>↔️ 方向</label>
+        <select id="g_dir"><option value="horizontal">水平</option><option value="vertical">垂直</option><option value="diagonal">对角线</option></select>
+      </div>
+      <div><label>🖼️ 格式</label>
+        <select id="g_format"><option value="png">PNG</option><option value="jpeg">JPEG</option></select>
+      </div>
+      <div><label>🎯 色彩空间</label>
+        <select id="g_colorspace"><option value="srgb">sRGB</option><option value="p3">Display P3</option></select>
+      </div>
+    </div>
+    <button class="btn" id="g_generateBtn">⚡ 生成</button>
+  </div>
+
+  <!-- 面板3: 灰阶批量 -->
+  <div id="panel-gray" class="tab-panel">
+    <p class="panel-desc">按灰阶范围批量生成多张纯色图片，右下角自动标注信息。</p>
+    <div class="row">
+      <div><label>📐 宽度</label><input type="number" id="gray_width" value="800" min="1" max="8192"></div>
+      <div><label>📐 高度</label><input type="number" id="gray_height" value="600" min="1" max="8192"></div>
+      <div><label>⬛ 起始</label><input type="number" id="gray_start" value="0" min="0" max="255"></div>
+      <div><label>⬜ 结束</label><input type="number" id="gray_end" value="255" min="0" max="255"></div>
+      <div><label>📏 间隔</label><input type="number" id="gray_step" value="32" min="1" max="255"></div>
+      <div><label>🖼️ 格式</label>
+        <select id="gray_format"><option value="png">PNG</option><option value="jpeg">JPEG</option></select>
+      </div>
+      <div><label>🎯 色彩空间</label>
+        <select id="gray_colorspace"><option value="srgb">sRGB</option><option value="p3">Display P3</option></select>
+      </div>
+    </div>
+    <button class="btn" id="gray_generateBtn">⚡ 生成</button>
+  </div>
+
+  <div class="btn-group" style="margin-top:12px;border-top:1px solid #e9edf3;padding-top:12px;">
+    <button class="btn btn-secondary" id="downloadAllBtn">📦 下载全部 ZIP</button>
+    <button class="btn btn-secondary" id="clearBtn">🗑️ 清空</button>
+    <span style="flex:1;text-align:right;font-size:12px;color:#8a9aa8;" id="totalCount">共 0 张</span>
+  </div>
+
+  <div id="status" class="status">💡 选择标签页，设置参数后点击生成</div>
+  <div id="previewContainer" class="preview-area"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function() {
+  const container = document.getElementById('previewContainer');
+  const status = document.getElementById('status');
+  const totalCount = document.getElementById('totalCount');
+  const badge = document.getElementById('colorSpaceBadge');
+
+  const colorSpaceSelects = [
+    document.getElementById('s_colorspace'),
+    document.getElementById('g_colorspace'),
+    document.getElementById('gray_colorspace')
+  ];
+
+  const s_width = document.getElementById('s_width');
+  const s_height = document.getElementById('s_height');
+  const s_colorPicker = document.getElementById('s_colorPicker');
+  const s_rgbText = document.getElementById('s_rgbText');
+  const s_format = document.getElementById('s_format');
+  const s_generateBtn = document.getElementById('s_generateBtn');
+
+  const g_width = document.getElementById('g_width');
+  const g_height = document.getElementById('g_height');
+  const g_startPicker = document.getElementById('g_startPicker');
+  const g_startText = document.getElementById('g_startText');
+  const g_endPicker = document.getElementById('g_endPicker');
+  const g_endText = document.getElementById('g_endText');
+  const g_dir = document.getElementById('g_dir');
+  const g_format = document.getElementById('g_format');
+  const g_generateBtn = document.getElementById('g_generateBtn');
+
+  const gray_width = document.getElementById('gray_width');
+  const gray_height = document.getElementById('gray_height');
+  const gray_start = document.getElementById('gray_start');
+  const gray_end = document.getElementById('gray_end');
+  const gray_step = document.getElementById('gray_step');
+  const gray_format = document.getElementById('gray_format');
+  const gray_generateBtn = document.getElementById('gray_generateBtn');
+
+  const downloadAllBtn = document.getElementById('downloadAllBtn');
+  const clearBtn = document.getElementById('clearBtn');
+
+  let currentBlobs = [];
+  let currentLabels = [];
+
+  function updateBadge(value) {
+    const label = value === 'p3' ? 'Display P3' : 'sRGB';
+    badge.textContent = label;
+    badge.className = `color-space-badge ${value === 'p3' ? 'p3' : 'srgb'}`;
+  }
+
+  colorSpaceSelects.forEach(sel => {
+    sel.addEventListener('change', function() {
+      const val = this.value;
+      colorSpaceSelects.forEach(s => s.value = val);
+      updateBadge(val);
+    });
+  });
+
+  function rgbToHex(r, g, b) {
+    return '#' + [r, g, b].map(c => Math.round(c).toString(16).padStart(2, '0')).join('');
+  }
+
+  function hexToRgb(hex) {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null;
+  }
+
+  function parseRgbText(text) {
+    const m = text.trim().match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i);
+    if (m) return { r: parseInt(m[1]), g: parseInt(m[2]), b: parseInt(m[3]) };
+    return null;
+  }
+
+  function syncPickerToText(picker, text) {
+    const rgb = hexToRgb(picker.value);
+    if (rgb) text.value = `rgb(${rgb.r},${rgb.g},${rgb.b})`;
+  }
+
+  function syncTextToPicker(picker, text) {
+    const rgb = parseRgbText(text.value);
+    if (rgb) { picker.value = rgbToHex(rgb.r, rgb.g, rgb.b); return true; }
+    return false;
+  }
+
+  s_colorPicker.addEventListener('input', () => syncPickerToText(s_colorPicker, s_rgbText));
+  s_rgbText.addEventListener('change', () => syncTextToPicker(s_colorPicker, s_rgbText));
+  g_startPicker.addEventListener('input', () => syncPickerToText(g_startPicker, g_startText));
+  g_startText.addEventListener('change', () => syncTextToPicker(g_startPicker, g_startText));
+  g_endPicker.addEventListener('input', () => syncPickerToText(g_endPicker, g_endText));
+  g_endText.addEventListener('change', () => syncTextToPicker(g_endPicker, g_endText));
+
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      this.classList.add('active');
+      document.getElementById('panel-' + this.dataset.tab).classList.add('active');
+    });
+  });
+
+  // ========== 安全的色彩空间 Canvas 创建 ==========
+  function createCanvas(width, height, colorSpace) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    
+    // 尝试使用指定的色彩空间，如果不支持则降级到 sRGB
+    let ctx;
+    try {
+      if (colorSpace === 'p3') {
+        ctx = canvas.getContext('2d', { colorSpace: 'display-p3' });
+        // 检查是否真的支持 P3
+        if (!ctx || ctx.getContextAttributes().colorSpace !== 'display-p3') {
+          ctx = canvas.getContext('2d');
+          console.warn('Display P3 不支持，降级到 sRGB');
+        }
+      } else {
+        ctx = canvas.getContext('2d');
+      }
+    } catch (e) {
+      ctx = canvas.getContext('2d');
+      console.warn('色彩空间设置失败，降级到 sRGB');
+    }
+    return { canvas, ctx };
+  }
+
+  // ========== 水印 ==========
+  function addWatermark(canvas, lines) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width, h = canvas.height;
+
+    let fontSize = Math.max(10, Math.min(28, w * 0.022));
+    ctx.font = `${fontSize}px "SF Mono", "Menlo", "Consolas", monospace, system-ui`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
+
+    const lineHeight = fontSize * 1.25;
+    const padding = fontSize * 0.6;
+
+    const sampleSize = Math.min(40, Math.floor(w * 0.08), Math.floor(h * 0.08));
+    const sx = Math.max(0, w - sampleSize - 16);
+    const sy = Math.max(0, h - sampleSize - 16);
+    const imageData = ctx.getImageData(sx, sy, sampleSize, sampleSize);
+    const data = imageData.data;
+    let totalLum = 0, count = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      totalLum += 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+      count++;
+    }
+    const isLight = (totalLum / count) > 128;
+
+    ctx.fillStyle = isLight ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.92)';
+    ctx.shadowColor = isLight ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
+    ctx.shadowBlur = 4;
+
+    lines.forEach((line, i) => {
+      const y = h - padding - (lines.length - 1 - i) * lineHeight;
+      ctx.fillText(line, w - padding, y);
+    });
+    ctx.shadowBlur = 0;
+    return canvas;
+  }
+
+  // ========== 生成图片 ==========
+  function generateImageWithWatermark(width, height, drawFn, metaLines, format, colorSpace) {
+    const { canvas, ctx } = createCanvas(width, height, colorSpace);
+    drawFn(ctx, width, height);
+    addWatermark(canvas, metaLines);
+    return new Promise(resolve => {
+      const mime = format === 'jpeg' ? 'image/jpeg' : 'image/png';
+      const quality = format === 'jpeg' ? 0.92 : 1;
+      canvas.toBlob(blob => resolve({ blob, canvas }), mime, quality);
+    });
+  }
+
+  function getColorSpace(panel) {
+    const map = {
+      solid: document.getElementById('s_colorspace'),
+      gradient: document.getElementById('g_colorspace'),
+      gray: document.getElementById('gray_colorspace')
+    };
+    return map[panel] ? map[panel].value : 'srgb';
+  }
+
+  // ========== 生成纯色 ==========
+  async function generateSolid() {
+    const w = parseInt(s_width.value) || 800;
+    const h = parseInt(s_height.value) || 600;
+    if (w < 1 || h < 1 || w > 8192 || h > 8192) { status.textContent = '⚠️ 分辨率超出范围'; return; }
+
+    const rgb = parseRgbText(s_rgbText.value) || hexToRgb(s_colorPicker.value) || { r: 255, g: 107, b: 107 };
+    const format = s_format.value;
+    const colorSpace = getColorSpace('solid');
+    const colorStr = `rgb(${rgb.r},${rgb.g},${rgb.b})`;
+    const csLabel = colorSpace === 'p3' ? 'P3' : 'sRGB';
+
+    status.textContent = `⏳ 生成中 (${csLabel})...`;
+
+    try {
+      const result = await generateImageWithWatermark(w, h,
+        (ctx) => { ctx.fillStyle = colorStr; ctx.fillRect(0, 0, w, h); },
+        [`${w}×${h}  ${colorStr}  ${csLabel}`],
+        format, colorSpace
+      );
+      await renderPreviews([{ blob: result.blob, label: `纯色_${w}x${h}_${csLabel}` }]);
+      status.textContent = `✅ 生成完成 (${w}×${h}, ${colorStr}, ${csLabel})`;
+      updateBadge(colorSpace);
+    } catch (e) {
+      status.textContent = `❌ 生成失败: ${e.message}`;
+      console.error(e);
+    }
+  }
+
+  // ========== 生成渐变 ==========
+  async function generateGradient() {
+    const w = parseInt(g_width.value) || 800;
+    const h = parseInt(g_height.value) || 600;
+    if (w < 1 || h < 1 || w > 8192 || h > 8192) { status.textContent = '⚠️ 分辨率超出范围'; return; }
+
+    const startRgb = parseRgbText(g_startText.value) || hexToRgb(g_startPicker.value) || { r: 255, g: 107, b: 107 };
+    const endRgb = parseRgbText(g_endText.value) || hexToRgb(g_endPicker.value) || { r: 78, g: 205, b: 196 };
+    const dir = g_dir.value;
+    const format = g_format.value;
+    const colorSpace = getColorSpace('gradient');
+
+    const startStr = `rgb(${startRgb.r},${startRgb.g},${startRgb.b})`;
+    const endStr = `rgb(${endRgb.r},${endRgb.g},${endRgb.b})`;
+    const dirMap = { horizontal: '水平', vertical: '垂直', diagonal: '对角线' };
+    const csLabel = colorSpace === 'p3' ? 'P3' : 'sRGB';
+
+    status.textContent = `⏳ 生成中 (${csLabel})...`;
+
+    try {
+      const result = await generateImageWithWatermark(w, h,
+        (ctx) => {
+          let x0 = 0, y0 = 0, x1 = w, y1 = h;
+          if (dir === 'horizontal') { y0 = 0; y1 = 0; }
+          else if (dir === 'vertical') { x0 = 0; x1 = 0; }
+          const grad = ctx.createLinearGradient(x0, y0, x1, y1);
+          grad.addColorStop(0, startStr);
+          grad.addColorStop(1, endStr);
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, w, h);
+        },
+        [`${w}×${h}  ${startStr} → ${endStr}  ${csLabel}`, `${dirMap[dir]}`],
+        format, colorSpace
+      );
+      await renderPreviews([{ blob: result.blob, label: `渐变_${w}x${h}_${csLabel}` }]);
+      status.textContent = `✅ 生成完成 (${w}×${h}, ${csLabel})`;
+      updateBadge(colorSpace);
+    } catch (e) {
+      status.textContent = `❌ 生成失败: ${e.message}`;
+      console.error(e);
+    }
+  }
+
+  // ========== 生成灰阶批量 ==========
+  async function generateGrayBatch() {
+    const w = parseInt(gray_width.value) || 800;
+    const h = parseInt(gray_height.value) || 600;
+    if (w < 1 || h < 1 || w > 8192 || h > 8192) { status.textContent = '⚠️ 分辨率超出范围'; return; }
+
+    let start = parseInt(gray_start.value) || 0;
+    let end = parseInt(gray_end.value) || 255;
+    let step = parseInt(gray_step.value) || 32;
+    if (step < 1) step = 1;
+    if (start > end) { [start, end] = [end, start]; }
+
+    const format = gray_format.value;
+    const colorSpace = getColorSpace('gray');
+    const csLabel = colorSpace === 'p3' ? 'P3' : 'sRGB';
+
+    const grayVals = [];
+    for (let v = start; v <= end; v += step) grayVals.push(v);
+    if (grayVals[grayVals.length - 1] !== end) grayVals.push(end);
+
+    if (grayVals.length > 100) {
+      status.textContent = `⚠️ 灰阶数量过多 (${grayVals.length})，请增大间隔`;
+      return;
+    }
+
+    status.textContent = `⏳ 生成 ${grayVals.length} 张 (${csLabel})...`;
+
+    const items = [];
+    try {
+      for (const g of grayVals) {
+        const colorStr = `rgb(${g},${g},${g})`;
+        const result = await generateImageWithWatermark(w, h,
+          (ctx) => { ctx.fillStyle = colorStr; ctx.fillRect(0, 0, w, h); },
+          [`${w}×${h}  ${colorStr}  ${csLabel}`],
+          format, colorSpace
+        );
+        items.push({ blob: result.blob, label: `灰阶_${g}_${csLabel}` });
+      }
+      await renderPreviews(items);
+      status.textContent = `✅ 生成完成！共 ${items.length} 张 (${start}→${end}, 间隔${step}, ${csLabel})`;
+      updateBadge(colorSpace);
+    } catch (e) {
+      status.textContent = `❌ 生成失败: ${e.message}`;
+      console.error(e);
+    }
+  }
+
+  // ========== 渲染预览 ==========
+  async function renderPreviews(items) {
+    container.innerHTML = '';
+    currentBlobs = [];
+    currentLabels = [];
+
+    for (const item of items) {
+      currentBlobs.push(item.blob);
+      currentLabels.push(item.label);
+
+      const card = document.createElement('div');
+      card.className = 'preview-card';
+
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(item.blob);
+      img.alt = item.label;
+      card.appendChild(img);
+
+      const info = document.createElement('div');
+      info.className = 'info';
+      info.textContent = `${item.label}  ${(item.blob.size / 1024).toFixed(1)}KB`;
+      card.appendChild(info);
+
+      const dlBtn = document.createElement('button');
+      dlBtn.className = 'download-btn';
+      dlBtn.textContent = '⬇️ 下载';
+      dlBtn.addEventListener('click', function() {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(item.blob);
+        const ext = item.blob.type === 'image/jpeg' ? 'jpg' : 'png';
+        a.download = `${item.label}.${ext}`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      });
+      card.appendChild(dlBtn);
+
+      container.appendChild(card);
+    }
+
+    totalCount.textContent = `共 ${currentBlobs.length} 张`;
+  }
+
+  // ========== 下载全部 ZIP ==========
+  async function downloadAllZip() {
+    if (currentBlobs.length === 0) {
+      status.textContent = '⚠️ 请先生成图片';
+      return;
+    }
+    const zip = new JSZip();
+    currentBlobs.forEach((blob, i) => {
+      const label = currentLabels[i] || `img_${i+1}`;
+      const ext = blob.type === 'image/jpeg' ? 'jpg' : 'png';
+      zip.file(`${label}.${ext}`, blob);
+    });
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(zipBlob);
+    a.download = `图片_${currentBlobs.length}张.zip`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    status.textContent = `📦 ZIP 已下载 (${currentBlobs.length} 张)`;
+  }
+
+  // ========== 清空 ==========
+  function clearAll() {
+    container.innerHTML = '';
+    currentBlobs = [];
+    currentLabels = [];
+    totalCount.textContent = '共 0 张';
+    status.textContent = '🗑️ 已清空';
+  }
+
+  s_generateBtn.addEventListener('click', generateSolid);
+  g_generateBtn.addEventListener('click', generateGradient);
+  gray_generateBtn.addEventListener('click', generateGrayBatch);
+  downloadAllBtn.addEventListener('click', downloadAllZip);
+  clearBtn.addEventListener('click', clearAll);
+
+  window.addEventListener('load', () => {
+    setTimeout(generateSolid, 300);
+  });
+})();
+</script>
+</body>
+</html>
